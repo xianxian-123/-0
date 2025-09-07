@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gamma PDF 轉 HTML - 互動式圖片與音訊</title>
+    <style>
+        /* --- 全域樣式 --- */
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding-top: 20px;
+        }
+        .page-container {
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 800px;
+            padding: 20px;
+            box-sizing: border-box;
+            text-align: center;
+            position: relative; /* 讓 modal 可以相對於此定位 */
+        }
+        .page {
+            display: none; /* 預設隱藏所有頁面 */
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: none;
+            position: relative; /* 讓 image-wrapper 或 content-grid 可以相對於此定位 */
+            padding-bottom: 0;
+        }
+        .page:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        .page h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        .page p {
+            color: #555;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+        .page img { /* 基礎圖片樣式 */
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto; /* 預設居中 */
+        }
+        .audio-player {
+            margin-top: 15px;
+            width: 100%;
+        }
+
+        /* --- 圖片區塊和按鈕 --- */
+        .image-wrapper {
+            position: relative; /* 按鈕會相對於此定位 */
+            display: inline-block; /* 讓其寬度只包裹內容 */
+            max-width: 100%;
+            margin-bottom: 15px;
+            cursor: pointer; /* 提示是可點擊的 */
+            transition: transform 0.2s ease-in-out;
+        }
+        .image-wrapper:hover {
+            transform: scale(1.02); /* 滑鼠移上時稍微放大 */
+        }
+
+        /* 透明觸發按鈕，覆蓋在圖片上，用於觸發 modal */
+        .trigger-button {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: transparent; /* 完全透明 */
+            border: none;
+            cursor: pointer;
+            z-index: 5; /* 確保在圖片上方 */
+        }
+
+        /* --- 多圖片佈局 --- */
+        .content-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr); /* 固定 2 列 */
+            grid-template-rows: repeat(3, auto); /* 固定 3 行，高度自適應內容 */
+            gap: 15px; /* 區塊間距 */
+            margin-top: 20px;
+        }
+        .grid-item {
+            position: relative; /* 讓觸發按鈕相對於此定位 */
+            cursor: pointer;
+            transition: transform 0.2s ease-in-out;
+        }
+        .grid-item:hover {
+            transform: scale(1.02);
+        }
+        .grid-item img {
+            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: 5px; /* 圖片邊角圓潤 */
+        }
+
+        /* --- Modal (彈出小卡片) --- */
+        .modal {
+            display: none; /* 預設隱藏 */
+            position: fixed; /* 視窗固定定位 */
+            z-index: 100; /* 最高層級 */
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7); /* 半透明黑色背景 */
+            overflow: auto; /* 如果內容太高，則出現捲軸 */
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto; /* 上下5%，左右自動居中 */
+            padding: 20px;
+            border: 1px solid #888;
+            border-radius: 10px;
+            width: 80%; /* 彈窗寬度 */
+            max-width: 600px; /* 最大寬度 */
+            position: relative;
+            text-align: center;
+        }
+        .modal-content img { /* 彈窗內的圖片 */
+            max-width: 100%;
+            height: auto;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .modal-audio { /* 彈窗內音訊樣式 */
+            width: 100%;
+            margin-top: 15px;
+        }
+        .close-button {
+            color: #aaa;
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 30px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+        }
+
+        /* --- 頁面導航按鈕 --- */
+        .navigation {
+            position: absolute; /* 相對於 .image-wrapper 或 .page 定位 */
+            z-index: 10;
+        }
+        .nav-button {
+            padding: 10px 20px;
+            font-size: 16px;
+            color: #fff;
+            background-color: #007bff; /* 純藍色背景，不透明 */
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .nav-button:hover {
+            background-color: #0056b3;
+        }
+
+        /* --- 各頁面按鈕定位 --- */
+       
+        /* --- 各頁面按鈕定位 --- */
+        /* page1: 右下角 */
+        #page1 .navigation  {
+            top: 67.7%;
+            left: 50%;
+			transform: translate(-50%, -50%);
+            
+        }
+        /* page2: 左下角 */
+        #page2 .navigation {
+            top: 55.3%;
+            left: 21%;
+			transform: none;
+            ;
+        }
+        /* page3: 圖片中央 */
+        #page3 .navigation {
+            top: 90.9%;
+            left: 50%;
+            transform: translate(-50%, 30%);
+        }
+
+        
+        /* page5: 圖片左上角 */
+        #page5 .navigation  {
+            top: 67.8%;
+            left: 44%;
+			transform: none;
+            ;
+        }
+        /* page6: 圖片底部右側 */
+        #page6 .navigation  {
+            top: 93.5%;
+            left: 43.8%;
+			transform: none;
+            
+        }
+        /* page7: 圖片中央 (最後一頁) */
+        #page7 .navigation  {
+            top: 67.2%;
+            left: 38%;
+			transform: none;
+            ;
+        }
+
+        /* --- 預設顯示 --- */
+        .page.active { display: block; }
+    </style>
+</head>
+<body>
+
+    <div class="page-container">
+        
+        <div id="imageModal" class="modal">
+            <span class="close-button" onclick="closeModal()">&times;</span>
+            <div class="modal-content">
+                <img id="modalImage" src="" alt="放大圖片">
+                <audio id="modalAudio" controls class="modal-audio">
+                    您的瀏覽器不支援 audio 元素。
+                </audio>
+            </div>
+        </div>
+
+        <div id="page1" class="page active">
+            <h2></h2>
+            <p></p>
+            <div class="image-wrapper" ">
+                <img src="images/1_.png" alt="PDF 第一頁圖片">
+                
+            </div>
+            <div class="navigation" style="bottom: 10px; right: 50px;">
+                <button class="nav-button" onclick="nextPage()">開始回億</button>
+            </div>
+           
+        </div>
+
+        <div id="page2" class="page">
+            <h2></h2>
+            <p></p>
+            <div class="image-wrapper" >
+                <img src="images/5_.png" alt="PDF 第二頁圖片">
+               
+            </div>
+            <div class="navigation" >
+                <button class="nav-button" onclick="nextPage()">皮皮貓取名圖鑑</button>
+            </div>
+            
+        </div>
+
+        <div id="page3" class="page">
+            <h2></h2>
+            <p></p>
+            <div class="image-wrapper" >
+                <img src="images/8_.png" alt="PDF 第三頁圖片">
+               
+            </div>
+            <div class="navigation">
+                <button class="nav-button" onclick="nextPage()">下一頁</button>
+            </div>
+           
+        </div>
+
+        <div id="page4" class="page">
+            <h2>先連上耳機在點圖片</h2>
+            <p>不要嚇到喔</p>
+            <div class="content-grid">
+                <div class="grid-item" onclick="openModal('images/認識之前的我們.png', 'audio/倒退嚕.mp3')">
+                    <img src="images/107.png" alt="約會">
+                    <div class="trigger-button"></div>
+                </div>
+                <div class="grid-item" onclick="openModal('images/皮皮貓喜歡的.png', 'audio/半島鐵盒.mp3')">
+                    <img src="images/20.png" alt="Gamma AI 作品 2">
+                    <div class="trigger-button"></div>
+                </div>
+				
+                <div class="grid-item" onclick="openModal('images/0.png', 'audio/Happy Ever After You.mp3')">
+                    <img src="images/103.png" alt="Gamma AI 作品 3">
+                    <div class="trigger-button"></div>
+                </div>
+                <div class="grid-item" onclick="openModal('images/00.png', 'audio/Happy Ever After You.mp3')">
+                    <img src="images/102.png" alt="Gamma AI 作品 4">
+                    <div class="trigger-button"></div>
+                </div>
+       
+                
+                 <div class="grid-item" onclick="openModal('images/約會.png', 'audio/簡單愛.mp3')">
+                    <img src="images/100.png" alt="Gamma AI 作品 7">
+                    <div class="trigger-button"></div>
+                </div>
+                 <div class="grid-item" onclick="openModal('images/機率.png', 'audio/愛你.mp3')">
+                    <img src="images/300.png" alt="Gamma AI 作品 8">
+                    <div class="trigger-button"></div>
+                </div>
+            </div>
+            <div class="navigation" style="top: 10px; right: 10px;">
+                <button class="nav-button" onclick="nextPage()">下一頁</button>
+            </div>
+        </div>
+
+        <div id="page5" class="page">
+            <h2></h2>
+            <p>。</p>
+            <div class="image-wrapper" >
+                <img src="images/14_.png" alt="PDF 第五頁圖片">
+                
+            </div>
+            <div class="navigation" >
+                <button class="nav-button" onclick="nextPage()">下一頁</button>
+            </div>
+          
+        </div>
+
+        <div id="page6" class="page">
+            <h2></h2>
+            <p></p>
+            <div class="image-wrapper" >
+                <img src="images/17_.png" alt="PDF 第六頁圖片">
+               
+            </div>
+            <div class="navigation" >
+                <button class="nav-button" onclick="nextPage()">下一頁</button>
+            </div>
+            
+        </div>
+
+        <div id="page7" class="page">
+            <h2></h2>
+            <p></p>
+            <div class="image-wrapper" >
+                <img src="images/20_.png" alt="PDF 第七頁圖片">
+                
+            </div>
+            <div class="navigation" >
+                <button class="nav-button" onclick="goToHome()">回到首頁開始新的一年</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let currentPageIndex = 1;
+        const totalPages = document.querySelectorAll('.page').length;
+
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            document.getElementById(pageId).classList.add('active');
+        }
+
+        function nextPage() {
+            if (currentPageIndex < totalPages) {
+                currentPageIndex++;
+                showPage(`page${currentPageIndex}`);
+            }
+        }
+
+        function goToHome() {
+            currentPageIndex = 1;
+            showPage('page1');
+        }
+
+        // --- Modal 相關函數 ---
+        // 接收圖片路徑和音訊路徑
+        function openModal(imageSrc, audioSrc) {
+            const modal = document.getElementById('imageModal');
+            const modalImage = document.getElementById('modalImage');
+            const modalAudio = document.getElementById('modalAudio');
+
+            modalImage.src = imageSrc;
+            modalAudio.src = audioSrc;
+
+            modal.style.display = "block";
+
+            // 嘗試自動播放音訊
+            modalAudio.play().catch(error => {
+                // 播放失敗時 (例如瀏覽器限制)，不做任何事或顯示提示
+                console.log("Autoplay was prevented:", error);
+            });
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('imageModal');
+            const modalAudio = document.getElementById('modalAudio');
+
+            // 關閉 modal 時停止音訊播放
+            modalAudio.pause();
+            modalAudio.currentTime = 0; // 重置播放進度
+
+            modal.style.display = "none";
+        }
+
+        // 點擊 modal 外圍關閉 modal
+        window.onclick = function(event) {
+            const modal = document.getElementById('imageModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+
+        // --- 初始載入 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            showPage('page1');
+        });
+    </script>
+
+</body>
+</html>
